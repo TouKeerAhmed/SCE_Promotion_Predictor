@@ -773,11 +773,6 @@ select.field-control {
   <div class="topbar-logo">SCE&nbsp;Dept</div>
   <div class="topbar-sep"></div>
   <div class="topbar-title">Promotion Predictor | Developed By Touqeer Ahmed | Fb/touqeer.a.k</div>
-  <div class="topbar-right">
-    <button class="topbar-load-btn" id="editSeatsBtn" onclick="toggleSeatsPanel()" type="button">Edit Sanctioned Seats</button>
-    <button class="topbar-load-btn" id="loadFreshBtn" onclick="toggleUploadPanel()" type="button">Load Fresh Seniority Data</button>
-    <div class="topbar-date" id="topbar-date">—</div>
-  </div>
 </div>
 
 <div class="upload-panel" id="seatsPanel">
@@ -809,6 +804,13 @@ select.field-control {
 </div>
 
 <div class="page">
+
+  <!-- ── PAGE CONTROLS (moved from topbar) ── -->
+  <div class="page-controls-row">
+    <button class="method-toggle-btn" id="editSeatsBtn" onclick="toggleSeatsPanel()" type="button">Edit Sanctioned Seats</button>
+    <button class="method-toggle-btn" id="loadFreshBtn" onclick="toggleUploadPanel()" type="button">Load Fresh Seniority Data</button>
+    
+  </div>
 
   <!-- ── METHOD EXPLAINER ── -->
   <button class="method-toggle-btn" onclick="toggleMethodInfo()" type="button">
@@ -1057,7 +1059,7 @@ function runSimulation(targetSno,targetGrade){
   log.push({t:'n',x:''});
 
   if((targetGrade===19&&result.BS19_to_BS20)||(targetGrade===18&&result.BS19_to_BS20))
-    return fin(result,tp,ownRetire,log,cg,false,T0);
+    return fin(result,tp,ownRetire,log,cg,false,T0,null);
 
   // Forward
   log.push({t:'sep',x:'-'.repeat(66)});
@@ -1065,7 +1067,7 @@ function runSimulation(targetSno,targetGrade){
   log.push({t:'sep',x:'-'.repeat(66)});
   log.push({t:'n',x:''});
 
-  let pr=trank(),retiredFirst=false,stopDate=T0;
+  let pr=trank(),retiredFirst=false,stopDate=T0,finalRank=pr;
 
   while(true){
     let nxt=null;
@@ -1084,21 +1086,21 @@ function runSimulation(targetSno,targetGrade){
     const rp=[];
     for(const g of[18,19,20])if(rt[g]&&rt[g].length)rp.push('BS-'+g+': '+rt[g].length+' retired ('+rt[g].map(p=>p.name).join(', ')+')');
     log.push({t:'n',x:'  Retirements: '+rp.join(' | ')});
-    if(tRetired){log.push({t:'promo',x:'  TARGET retires in BS-'+cg+'. No further promotion.'});log.push({t:'n',x:''});retiredFirst=true;break;}
+    if(tRetired){finalRank=pr;log.push({t:'promo',x:'  TARGET retires in BS-'+cg+'. No further promotion.'});log.push({t:'n',x:''});retiredFirst=true;break;}
     for(const l of cascade(vb,dObj))log.push(l);
     const va=vac();
     log.push({t:'n',x:'  Vacant (after fill):   BS-20:'+va[20]+'  BS-19:'+va[19]+'  BS-18:'+va[18]});
     const nr=trank();
     log.push({t:'n',x:'  Target rank: BS-'+cg+' #'+(nr!==pr?pr+' \u2192 #'+nr:nr+'  (unchanged)')});
-    pr=nr;
+    pr=nr;finalRank=nr;
     log.push({t:'n',x:''});
     if(targetGrade===19&&result.BS19_to_BS20)break;
     if(targetGrade===18&&result.BS18_to_BS19&&result.BS19_to_BS20)break;
   }
-  return fin(result,tp,ownRetire,log,cg,retiredFirst,stopDate);
+  return fin(result,tp,ownRetire,log,cg,retiredFirst,stopDate,finalRank);
 }
 
-function fin(result,tp,ownRetire,log,cg,retiredFirst,stopDate){
+function fin(result,tp,ownRetire,log,cg,retiredFirst,stopDate,finalRank){
   log.push({t:'sep',x:'-'.repeat(66)});
   log.push({t:'day',x:'FINAL RESULT'});
   log.push({t:'sep',x:'-'.repeat(66)});
@@ -1109,7 +1111,7 @@ function fin(result,tp,ownRetire,log,cg,retiredFirst,stopDate){
     const v=result[k],rk=result[k+'_rank'];
     log.push({t:'n',x:'  '+k+': '+(v?fmtDate(v)+(rk?'  (new seniority #'+rk+')':'')+(v>ownRetire?' (AFTER own retirement)':''):'NOT REACHED')});
   }
-  return{tp,ownRetire,result,log,cg,retiredFirst,stopDate};
+  return{tp,ownRetire,result,log,cg,retiredFirst,stopDate,finalRank};
 }
 
 // ── PREDICT UI ─────────────────────────────────────
@@ -1122,6 +1124,38 @@ function doPredict(){
     area.innerHTML='<div class="error-msg">Please enter a valid seniority number.</div>';
     return;
   }
+
+  // ── Already-Retired early check ─────────────────────
+  const personEntry=APP.seniority[String(grade)]&&APP.seniority[String(grade)].find(p=>p.sno===sno);
+  if(!personEntry){
+    area.className='result-area visible';
+    area.innerHTML='<div class="error-msg">S.No '+sno+' not found in BS-'+grade+'.</div>';
+    return;
+  }
+  const T0now=simToday();
+  const retireDateNow=retireDate(personEntry.dob);
+  if(retireDateNow<=T0now){
+    area.className='result-area visible';
+    const dobFmt=fmtDate(parseDate(personEntry.dob));
+    const retFmt=fmtDate(retireDateNow);
+    area.innerHTML=`
+      <div style="background:var(--red-pale);border:1px solid #e8b4b0;border-radius:10px;padding:1.5rem 1.75rem;">
+        <div style="font-size:18px;font-weight:700;color:var(--red);margin-bottom:8px;">&#9888; Already Retired</div>
+        <div style="font-size:14px;font-weight:600;color:var(--ink);margin-bottom:6px;">${esc(personEntry.name)}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+          <span class="chip grade">BS-${grade}</span>
+          <span class="chip">S.No&nbsp;${sno}</span>
+          <span class="chip">DOB&nbsp;&nbsp;${dobFmt}</span>
+          <span class="chip" style="background:var(--red-pale);color:var(--red);border-color:#e8b4b0;">Retired&nbsp;${retFmt}</span>
+        </div>
+        <div style="font-size:13px;color:var(--red);font-weight:500;">
+          This officer retired on <strong>${retFmt}</strong> and is no longer eligible for promotion. No forecast can be generated.
+        </div>
+      </div>`;
+    return;
+  }
+  // ────────────────────────────────────────────────────
+
   area.className='result-area visible';
   area.innerHTML='<div class="spinner-wrap"><div class="spinner"></div><div style="font-size:12px;color:var(--ink-3)">Running simulation\u2026</div></div>';
   document.getElementById('predictBtn').disabled=true;
@@ -1142,7 +1176,7 @@ function doPredict(){
 }
 
 function buildResult(sim,grade,sno){
-  const{tp,ownRetire,result,log,retiredFirst}=sim;
+  const{tp,ownRetire,result,log,retiredFirst,cg:finalGrade,finalRank}=sim;
   const T0=simToday();
 
   // person header
@@ -1157,7 +1191,9 @@ function buildResult(sim,grade,sno){
 
   // timeline
   h+='<div class="timeline-wrap"><div class="timeline-track">';
-  const steps=buildSteps(grade,ownRetire,result,T0,retiredFirst,sno);
+  // current rank = 1-based position in the original grade's seniority list
+  const currentRank=(APP.seniority[String(grade)]||[]).findIndex(p=>p.sno===sno)+1||null;
+  const steps=buildSteps(grade,ownRetire,result,T0,retiredFirst,sno,currentRank,finalRank,finalGrade);
   steps.forEach((s,i)=>{
     const last=i===steps.length-1;
     h+='<div class="tl-row">';
@@ -1178,21 +1214,33 @@ function buildResult(sim,grade,sno){
   return h;
 }
 
-function buildSteps(grade,ownRetire,result,T0,retiredFirst,sno){
+function buildSteps(grade,ownRetire,result,T0,retiredFirst,sno,currentRank,finalRank,finalGrade){
   const steps=[];
   steps.push({nodeClass:'origin',icon:'&#9679;',eyebrow:'Current Position',dateStr:'BS-'+grade,sub:'S.No '+sno+' &nbsp;|&nbsp; As of '+fmtDate(T0),badge:'Active',badgeClass:'current'});
 
   if(grade===18){
     const s1=result.BS18_to_BS19;
-    if(s1){const late=s1>ownRetire;const rankSub=result.BS18_to_BS19_rank?' &nbsp;|&nbsp; New Seniority #'+result.BS18_to_BS19_rank+' in BS-19':'';steps.push({nodeClass:late?'miss':'promo',icon:'&#9650;',eyebrow:'Stage 1 — BS-18 \u2192 BS-19',dateStr:fmtDate(s1),dateClass:'green',sub:yearsFrom(T0,s1)+' years from now'+rankSub,badge:late?'After Retirement':'Promoted',badgeClass:late?'missed':'promoted'});}
-    else steps.push({nodeClass:'miss',icon:'\u2715',eyebrow:'Stage 1 — BS-18 \u2192 BS-19',dateStr:'Not reached',sub:retiredFirst?'Retired before promotion':'Beyond 40-year horizon',badge:retiredFirst?'Retired':'Horizon',badgeClass:'missed'});
+    if(s1){const late=s1>ownRetire;const rankSub=result.BS18_to_BS19_rank?' &nbsp;|&nbsp; New Seniority #'+result.BS18_to_BS19_rank+' in BS-19':'';steps.push({nodeClass:late?'miss':'promo',icon:'&#9650;',eyebrow:'Stage 1 \u2014 BS-18 \u2192 BS-19',dateStr:fmtDate(s1),dateClass:'green',sub:yearsFrom(T0,s1)+' years from now'+rankSub,badge:late?'After Retirement':'Promoted',badgeClass:late?'missed':'promoted'});}
+    else{const rankNote=currentRank?' &nbsp;|&nbsp; Current BS-18 Seniority #'+currentRank:'';steps.push({nodeClass:'miss',icon:'\u2715',eyebrow:'Stage 1 \u2014 BS-18 \u2192 BS-19',dateStr:'Not reached',sub:(retiredFirst?'Retired before promotion':'Beyond 40-year horizon')+rankNote,badge:retiredFirst?'Retired':'Horizon',badgeClass:'missed'});}
   }
   if(grade===18||grade===19){
     const s2=result.BS19_to_BS20;
-    if(s2){const late=s2>ownRetire;const rankSub=result.BS19_to_BS20_rank?' &nbsp;|&nbsp; New Seniority #'+result.BS19_to_BS20_rank+' in BS-20':'';steps.push({nodeClass:late?'miss':'peak',icon:'\u2605',eyebrow:'Stage 2 — BS-19 \u2192 BS-20',dateStr:fmtDate(s2),dateClass:'gold',sub:yearsFrom(T0,s2)+' years from now'+rankSub,badge:late?'After Retirement':'Promoted',badgeClass:late?'missed':'gold'});}
-    else steps.push({nodeClass:'miss',icon:'\u2715',eyebrow:'Stage 2 — BS-19 \u2192 BS-20',dateStr:'Not reached',sub:retiredFirst?'Retired before promotion':'Beyond 40-year horizon',badge:retiredFirst?'Retired':'Horizon',badgeClass:'missed'});
+    // for a BS-18 starter who reached BS-19 but not BS-20, rank in BS-19 is BS19_to_BS20_rank; if never reached BS-19, use currentRank in BS-18
+    const missRankNote=(grade===19&&currentRank)?' &nbsp;|&nbsp; Current BS-19 Seniority #'+currentRank:(grade===18&&!result.BS18_to_BS19&&currentRank)?' &nbsp;|&nbsp; Current BS-18 Seniority #'+currentRank:'';
+    if(s2){const late=s2>ownRetire;const rankSub=result.BS19_to_BS20_rank?' &nbsp;|&nbsp; New Seniority #'+result.BS19_to_BS20_rank+' in BS-20':'';steps.push({nodeClass:late?'miss':'peak',icon:'\u2605',eyebrow:'Stage 2 \u2014 BS-19 \u2192 BS-20',dateStr:fmtDate(s2),dateClass:'gold',sub:yearsFrom(T0,s2)+' years from now'+rankSub,badge:late?'After Retirement':'Promoted',badgeClass:late?'missed':'gold'});}
+    else{
+      // Build sub-line: reason + rank-at-retirement note
+      const retireRankNote=(retiredFirst&&finalRank&&finalGrade)?' &nbsp;|&nbsp; Final BS-'+finalGrade+' Seniority #'+finalRank+' at retirement':'';
+      steps.push({nodeClass:'miss',icon:'\u2715',eyebrow:'Stage 2 \u2014 BS-19 \u2192 BS-20',dateStr:'Not reached',sub:(retiredFirst?'Retired before promotion':'Beyond 40-year horizon')+missRankNote+retireRankNote,badge:retiredFirst?'Retired before promotion':'Horizon',badgeClass:'missed'});
+    }
   }
   if(grade===20) steps.push({nodeClass:'peak',icon:'\u2605',eyebrow:'Already at Highest Grade',dateStr:'BS-20',sub:'Retirement: '+fmtDate(ownRetire),badge:null,badgeClass:''});
+
+  // Show rank at the moment of retirement (before the retirement node), only when person retired without reaching BS-20
+  if(retiredFirst&&finalRank&&finalGrade&&grade!==20){
+    steps.push({nodeClass:'origin',icon:'&#9670;',eyebrow:'Rank at Retirement',dateStr:'BS-'+finalGrade+' &nbsp;\u2014&nbsp; Seniority #'+finalRank,sub:'Position held on retirement date &nbsp;'+fmtDate(ownRetire),badge:null,badgeClass:'',rankNode:true});
+  }
+
   steps.push({nodeClass:'retire',icon:'&#9675;',eyebrow:'Retirement',dateStr:fmtDate(ownRetire),sub:yearsFrom(T0,ownRetire)+' years from now',badge:null,badgeClass:''});
   return steps;
 }
